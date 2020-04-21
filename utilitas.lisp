@@ -13,40 +13,49 @@ ARG0: a keyword that indicates your application name"))
 (defun trim-argv0 (argv0)
   (pathname-name argv0))
 
+(defun probe-system (selector)
+  (cond ((asdf:find-system selector nil)
+         (asdf:load-system selector)
+         :success)
+        ((ql-dist:find-system selector)
+         (ql:quickload selector)
+         :success)
+        (t nil)))
+
+(defun handle-dump (args)
+  (let ((new-name (elt args (1+ (position "--fwoar-dump" args :test #'equal)))))
+    (setf sb-sys:*shared-objects* nil)
+    (setf uiop:*image-entry-point* 'run-toplevel)
+    (uiop:dump-image new-name
+                     :executable t)))
+
+(defun start-repl (warning selector)
+  (#+sbcl warn #-sbcl error warning selector)
+  #+sbcl
+  (return-from start-repl
+    (sb-impl::toplevel-init)))
+
+(defun toplevel-designator (string)
+  (intern (string-upcase string)
+          :keyword))
+
 (defun run-toplevel ()
   (asdf:initialize-source-registry)
   (setf *trace-output* (make-broadcast-stream))
   (destructuring-bind (arg0 . args) sb-ext:*posix-argv*
-    (let ((selector (intern (string-upcase (trim-argv0 arg0))
-                            :keyword)))
-      (if (cond ((asdf:find-system selector nil)
-                 (asdf:load-system selector)
-                 :success)
-                ((ql-dist:find-system selector)
-                 (ql:quickload selector)
-                 :success)
-                (t nil))
+    (let ((selector (toplevel-designator (trim-argv0 arg0))))
+      (if (probe-system selector)
           (if (member "--fwoar-dump" args :test #'equal)
-              (let ((new-name (elt args (1+ (position "--fwoar-dump" args :test #'equal)))))
-                (setf sb-sys:*shared-objects* nil)
-                (setf uiop:*image-entry-point* 'run-toplevel)
-                (uiop:dump-image new-name
-                                 :executable t))
+              (handle-dump args)
               (if (compute-applicable-methods (symbol-function 'main)
                                               (list selector nil))
                   (main selector args)
-                  (progn (warn "no applicable toplevel for ~s found, starting a repl"
-                               selector)
-                         (sb-impl::toplevel-init))))
+                  (start-repl "no applicable toplevel for ~s found, starting a repl"
+                              selector)))
           (if (member "--fwoar-dump" args :test #'equal)
-              (let ((new-name (elt args (1+ (position "--fwoar-dump" args :test #'equal)))))
-                (setf sb-sys:*shared-objects* nil)
-                (setf uiop:*image-entry-point* 'run-toplevel)
-                (uiop:dump-image new-name
-                                 :executable t))
-              (progn (warn "no system for ~s found, starting a repl"
-                           selector)
-                     (sb-impl::toplevel-init)))))))
+              (handle-dump args)
+              (start-repl "no system for ~s found, starting a repl"
+                          selector))))))
 
 #+(:and sbcl fw.dev)
 (defun save-core (core-fn)
