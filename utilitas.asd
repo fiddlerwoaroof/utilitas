@@ -1,5 +1,5 @@
 ;;; -*- Mode:Lisp; Syntax:ANSI-Common-Lisp; Package: ASDF-USER -*-
-(in-package :asdf-user)
+(cl:in-package :asdf-user)
 
 (defsystem :utilitas
   :description ""
